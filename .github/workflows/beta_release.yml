@@ -1,14 +1,14 @@
 name: Beta Release builds
 
 # Fork 自用精简版：
-# - push dev 自动构建（上游机制只认 main/tag，fork 无 PR 流程）
+# - push selfuse 自动构建（上游机制只认 main/tag，fork 无 PR 流程）
 # - 只产出 Windows amd64 / Linux amd64 / Linux arm64 三个纯 Go 交叉编译产物
 # - 前端用 FRONTEND_REPO 的 edge(rolling) 产物（fork 若未设置该 variable 则回退官方前端）
 # - 发布为 fork 仓库的 prerelease "beta"
 
 on:
   push:
-    branches: ["dev"]
+    branches: ["selfuse"]
   workflow_dispatch:
 
 concurrency:
@@ -69,11 +69,11 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # 每次重建 prerelease "beta"，保证 release 指向最新 dev commit
+          # 每次重建 prerelease "beta"，保证 release 指向最新 selfuse commit
           gh release delete beta --yes --cleanup-tag >/dev/null 2>&1 || true
           git tag -f beta
           git push -f origin beta
-          gh release create beta --prerelease --title "Beta Build" --notes "Auto-built from the latest \`dev\` push (fork self-build)." >/dev/null
+          gh release create beta --prerelease --title "Beta Build" --notes "Auto-built from the latest \`selfuse\` push (fork self-build)." >/dev/null
           for file in build/compress/*; do
             gh release upload beta "$file" --clobber
           done
