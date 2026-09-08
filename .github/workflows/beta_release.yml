@@ -3,7 +3,7 @@ name: Beta Release builds
 # Fork 自用精简版：
 # - push selfuse 自动构建（上游机制只认 main/tag，fork 无 PR 流程）
 # - 只产出 Windows amd64 / Linux amd64 / Linux arm64 三个纯 Go 交叉编译产物
-# - 前端用 FRONTEND_REPO 的 edge(rolling) 产物（fork 若未设置该 variable 则回退官方前端）
+# - 前端默认用 sucooer/OpenList-Frontend 的 edge(rolling) 产物（可用 vars.FRONTEND_REPO 覆盖）
 # - 发布为 fork 仓库的 prerelease "beta"
 
 on:
@@ -38,7 +38,7 @@ jobs:
         run: bash build.sh dev web
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          FRONTEND_REPO: ${{ vars.FRONTEND_REPO }}
+          FRONTEND_REPO: ${{ vars.FRONTEND_REPO || 'sucooer/OpenList-Frontend' }}
 
       - name: Cross-compile binaries (pure Go, no cgo)
         run: |
