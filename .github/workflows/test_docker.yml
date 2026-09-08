@@ -79,8 +79,12 @@ jobs:
         with:
           name: ${{ env.ARTIFACT_NAME }}
           overwrite: true
+          # 必须以 build/ 为根：upload-artifact 会把路径的公共前缀作为 artifact 根，
+          # 若写 build/linux/ 则下载后变成 build/amd64/openlist，Dockerfile.ci 的
+          # /build/${TARGETPLATFORM}/openlist 就找不到了
           path: |
-            build/linux/
+            build/
+            !build/*.tgz
 
   release_docker:
     needs: build_binary
@@ -115,6 +119,10 @@ jobs:
         with:
           name: ${{ env.ARTIFACT_NAME }}
           path: 'build/'
+
+      # 必须与 Dockerfile.ci 的 /build/${TARGETPLATFORM}/openlist 一一对应
+      - name: Verify binaries
+        run: find build -type f -name openlist | sort
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@1f40c72289eff860ee54a304f1438e3cff362e0a # v4
