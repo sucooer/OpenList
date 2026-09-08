@@ -1,75 +1,66 @@
 name: Release builds
 
+# Fork 自用精简版（正式版）：
+# - 触发：GitHub Release published（打 v* tag 后由 changelog.yml 自动建 Release，或手动创建）
+# - 只产出 Windows amd64 / Linux amd64 / Linux arm64 三个纯 Go 交叉编译产物并上传该 Release
+# - 前端用 FRONTEND_REPO 的 edge(rolling) 产物（fork 无稳定前端 release 时 releases/latest 会 404）
+
 on:
   release:
-    types: [ published ]
+    types: [published]
 
 permissions:
   contents: write
 
 jobs:
-  # Set release to prerelease first
-  prerelease:
-    name: Set Prerelease
-    runs-on: ubuntu-latest
-    steps:
-      - name: Prerelease
-        uses: irongut/EditRelease@ccf529ad26dddf9996e7dd0f24ca5da4ea507cc2 # v1.2.0
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          id: ${{ github.event.release.id }}
-          prerelease: true
-
-  # Main release job for all platforms
   release:
-    needs: prerelease
-    strategy:
-      matrix:
-        build-type: [ 'standard', 'lite' ]
-        target-platform: [ '', 'android', 'freebsd', 'linux_musl', 'linux_musl_arm' ]
-    name: Release ${{ matrix.target-platform && format('{0} ', matrix.target-platform) || '' }}${{ matrix.build-type == 'lite' && 'Lite' || '' }}
+    name: Release (win-amd64 / linux-amd64 / linux-arm64)
     runs-on: ubuntu-latest
     steps:
-
-      - name: Free Disk Space (Ubuntu)
-        if: matrix.target-platform == ''
-        uses: jlumbroso/free-disk-space@54081f138730dfa15788a46383842cd2f914a1be # main
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          tool-cache: false
-          android: true
-          dotnet: true
-          haskell: true
-          large-packages: true
-          docker-images: true
-          swap-storage: true
+          fetch-depth: 0
+          fetch-tags: true
 
       - name: Setup Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
           go-version: '1.27.1'
 
-      - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          fetch-depth: 1
-          fetch-tags: true
-
-      - name: Install dependencies
-        if: matrix.target-platform == ''
-        run: |
-          sudo snap install zig --classic --beta
-          docker pull crazymax/xgo:latest
-          go install github.com/crazy-max/xgo@latest
-          sudo apt install upx
-
-      - name: Build
-        run: |
-          bash build.sh release ${{ matrix.build-type == 'lite' && 'lite' || '' }} ${{ matrix.target-platform }}
+      - name: Fetch rolling frontend
+        # "dev web" = 只拉 FRONTEND_REPO edge(rolling) dist 到 public/dist
+        run: bash build.sh dev web
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           FRONTEND_REPO: ${{ vars.FRONTEND_REPO }}
 
-      - name: Upload assets
+      - name: Cross-compile binaries (pure Go, no cgo)
+        run: |
+          set -e
+          mkdir -p build
+          gitCommit=$(git rev-parse --short HEAD)
+          builtAt=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          ldflags="-w -s -X 'github.com/OpenListTeam/OpenList/v4/internal/conf.BuiltAt=${builtAt}' -X 'github.com/OpenListTeam/OpenList/v4/internal/conf.GitAuthor=OpenList Fork Builder <noreply@github.com>' -X 'github.com/OpenListTeam/OpenList/v4/internal/conf.GitCommit=${gitCommit}' -X 'github.com/OpenListTeam/OpenList/v4/internal/conf.Version=${{ github.event.release.tag_name }}' -X 'github.com/OpenListTeam/OpenList/v4/internal/conf.WebVersion=rolling'"
+          for t in "linux amd64" "linux arm64" "windows amd64"; do
+            os=${t%% *}
+            arch=${t##* }
+            echo "building $os/$arch"
+            if [ "$os" = "windows" ]; then
+              CGO_ENABLED=0 GOOS=$os GOARCH=$arch go build -trimpath -o build/openlist-$os-$arch.exe -ldflags="$ldflags" -tags=jsoniter .
+            else
+              CGO_ENABLED=0 GOOS=$os GOARCH=$arch go build -trimpath -o build/openlist-$os-$arch -ldflags="$ldflags" -tags=jsoniter .
+            fi
+          done
+          ls -lh build/
+
+      - name: Package assets
+        # 复用官方 MakeRelease：linux→tar.gz，windows→zip，并生成 md5.txt
+        run: bash build.sh zip md5
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload assets to release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |

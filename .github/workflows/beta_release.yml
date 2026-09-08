@@ -1,110 +1,26 @@
 name: Beta Release builds
 
+# Fork 自用精简版：
+# - push dev 自动构建（上游机制只认 main/tag，fork 无 PR 流程）
+# - 只产出 Windows amd64 / Linux amd64 / Linux arm64 三个纯 Go 交叉编译产物
+# - 前端用 FRONTEND_REPO 的 edge(rolling) 产物（fork 若未设置该 variable 则回退官方前端）
+# - 发布为 fork 仓库的 prerelease "beta"
+
 on:
   push:
     branches: ["dev"]
   workflow_dispatch:
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
   contents: write
 
 jobs:
-  changelog:
-    name: Beta Release Changelog
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          fetch-depth: 0
-
-      - name: Create or update ref
-        id: create-or-update-ref
-        uses: ovsds/create-or-update-ref-action@1157b2991820188d5a8e6f22656775d1d171f762 # v1
-        with:
-          ref: tags/beta
-          sha: ${{ github.sha }}
-
-      - name: Delete beta tag
-        run: git tag -d beta
-        continue-on-error: true
-
-      - name: changelog # or changelogithub@0.12 if ensure the stable result
-        id: changelog
-        run: |
-          git tag -l
-          npx changelogithub --output CHANGELOG.md
-
-      - name: Upload assets to beta release
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          if ! gh release view beta; then
-            gh release create beta --prerelease --notes-file CHANGELOG.md
-          else
-            gh release edit beta --prerelease --notes-file CHANGELOG.md
-          fi
-          gh release upload beta "CHANGELOG.md" --clobber
-
-      - name: Upload assets to github artifact
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        with:
-          name: beta changelog
-          path: ${{ github.workspace }}/CHANGELOG.md
-          compression-level: 0
-          if-no-files-found: error # 'warn' or 'ignore' are also available, defaults to `warn`
-
   release:
-    needs:
-      - changelog
-    strategy:
-      matrix:
-        include:
-          - target: "!(*musl*|*windows-arm64*|*windows7-*|*android*|*freebsd*)" # xgo and loongarch (exclude mips64le)
-            hash: "md5"
-            flags: ""
-            goflags: ""
-          - target: "linux-(mips|mips64|mipsle|mips64le|loong64)-musl*" # musl-compat-family
-            hash: "md5-linux-musl-mips"
-            flags: "-ldflags=-linkmode external -extldflags '-static -fpic'"
-            goflags: ""
-            musl_static: "true"
-          - target: "linux-!(arm*|mips|mips64|mipsle|mips64le|loong64)-musl*" # musl-not-arm (exclude compat-family)
-            hash: "md5-linux-musl"
-            flags: "-ldflags=-linkmode external -extldflags '-static -fpic'"
-            goflags: ""
-            musl_static: "true"
-          - target: "linux-arm*-musl*" #musl-arm
-            hash: "md5-linux-musl-arm"
-            flags: "-ldflags=-linkmode external -extldflags '-static -fpic'"
-            goflags: ""
-            musl_static: "true"
-          - target: "windows-arm64" #win-arm64
-            hash: "md5-windows-arm64"
-            flags: ""
-            goflags: ""
-            musl_static: "false"
-          - target: "windows7-*" #win7
-            hash: "md5-windows7"
-            flags: ""
-            goflags: "-tags=sqlite_cgo_compat"
-            musl_static: "false"
-          - target: "android-*" #android
-            hash: "md5-android"
-            flags: ""
-            goflags: ""
-            musl_static: "false"
-          - target: "freebsd-*" #freebsd
-            hash: "md5-freebsd"
-            flags: ""
-            goflags: ""
-            musl_static: "false"
-
-    name: Beta Release
+    name: Beta Release (win-amd64 / linux-amd64 / linux-arm64)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -117,77 +33,47 @@ jobs:
         with:
           go-version: "1.27.1"
 
-      - name: Setup web
+      - name: Fetch rolling frontend
+        # build.sh 的 "dev web" = 只拉 FRONTEND_REPO 的 edge(rolling) dist 到 public/dist，不做后端构建
         run: bash build.sh dev web
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           FRONTEND_REPO: ${{ vars.FRONTEND_REPO }}
 
-      - name: Build
-        uses: OpenListTeam/cgo-actions@6fcace5934c36d70503dba06e2396bb58b766130 # v1.2.5
-        with:
-          targets: ${{ matrix.target }}
-          flags: ${{ matrix.flags || '-ldflags=' }}
-          static-link-for-musl: true
-          musl-target-format: $os-$musl-$arch
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          out-dir: build
-          output: openlist-$target$ext
-          musl-base-url: "https://github.com/OpenListTeam/musl-compilers/releases/latest/download/"
-          x-flags: |
-            github.com/OpenListTeam/OpenList/v4/internal/conf.BuiltAt=$built_at
-            github.com/OpenListTeam/OpenList/v4/internal/conf.GitAuthor=The OpenList Projects Contributors <noreply@openlist.team>
-            github.com/OpenListTeam/OpenList/v4/internal/conf.GitCommit=$git_commit
-            github.com/OpenListTeam/OpenList/v4/internal/conf.Version=$tag
-            github.com/OpenListTeam/OpenList/v4/internal/conf.WebVersion=rolling
-        env:
-          GOFLAGS: ${{ matrix.goflags }}
-
-      - name: Verify musl binaries are static
-        if: matrix.musl_static == 'true'
+      - name: Cross-compile binaries (pure Go, no cgo)
         run: |
           set -e
-          shopt -s nullglob
-          files=(build/openlist-*-musl-*)
-          if [ ${#files[@]} -eq 0 ]; then
-            echo "No musl binaries found"
-            exit 1
-          fi
-          for f in "${files[@]}"; do
-            if readelf -l "$f" | grep -q "Requesting program interpreter"; then
-              echo "Dynamic binary detected: $f"
-              readelf -l "$f" | grep "Requesting program interpreter" || true
-              exit 1
+          mkdir -p build
+          gitCommit=$(git rev-parse --short HEAD)
+          builtAt=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          ldflags="-w -s -X 'github.com/OpenListTeam/OpenList/v4/internal/conf.BuiltAt=${builtAt}' -X 'github.com/OpenListTeam/OpenList/v4/internal/conf.GitAuthor=OpenList Fork Builder <noreply@github.com>' -X 'github.com/OpenListTeam/OpenList/v4/internal/conf.GitCommit=${gitCommit}' -X 'github.com/OpenListTeam/OpenList/v4/internal/conf.Version=beta' -X 'github.com/OpenListTeam/OpenList/v4/internal/conf.WebVersion=rolling'"
+          for t in "linux amd64" "linux arm64" "windows amd64"; do
+            os=${t%% *}
+            arch=${t##* }
+            echo "building $os/$arch"
+            if [ "$os" = "windows" ]; then
+              CGO_ENABLED=0 GOOS=$os GOARCH=$arch go build -trimpath -o build/openlist-$os-$arch.exe -ldflags="$ldflags" -tags=jsoniter .
+            else
+              CGO_ENABLED=0 GOOS=$os GOARCH=$arch go build -trimpath -o build/openlist-$os-$arch -ldflags="$ldflags" -tags=jsoniter .
             fi
           done
+          ls -lh build/
 
-      - name: Compress
-        run: |
-          bash build.sh zip ${{ matrix.hash }}
+      - name: Package assets
+        # 复用官方 MakeRelease：linux→tar.gz，windows→zip，并生成 md5-beta.txt
+        run: bash build.sh zip md5-beta
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Upload assets to beta release
+      - name: Publish beta release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          # 每次重建 prerelease "beta"，保证 release 指向最新 dev commit
+          gh release delete beta --yes --cleanup-tag >/dev/null 2>&1 || true
+          git tag -f beta
+          git push -f origin beta
+          gh release create beta --prerelease --title "Beta Build" --notes "Auto-built from the latest \`dev\` push (fork self-build)." >/dev/null
           for file in build/compress/*; do
             gh release upload beta "$file" --clobber
           done
-
-      - name: Clean illegal characters from matrix.target
-        id: clean_target_name
-        run: |
-          ILLEGAL_CHARS_REGEX='[":<>|*?\\/\r\n]'
-          CLEANED_TARGET=$(echo "${{ matrix.target }}" | sed -E "s/$ILLEGAL_CHARS_REGEX//g")
-          echo "Original target: ${{ matrix.target }}"
-          echo "Cleaned target: $CLEANED_TARGET"
-          echo "cleaned_target=$CLEANED_TARGET" >> $GITHUB_ENV
-
-      - name: Upload assets to github artifact
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        with:
-          name: beta builds for ${{ env.cleaned_target }}
-          path: ${{ github.workspace }}/build/compress/*
-          compression-level: 0
-          if-no-files-found: error # 'warn' or 'ignore' are also available, defaults to `warn`
