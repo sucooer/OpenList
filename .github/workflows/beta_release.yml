@@ -2,7 +2,7 @@ name: Beta Release builds
 
 on:
   push:
-    branches: ["main"]
+    branches: ["dev"]
   workflow_dispatch:
 
 concurrency:
