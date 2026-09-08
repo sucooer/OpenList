@@ -175,6 +175,8 @@ func admin(g *gin.RouterGroup) {
 	// retain /admin/task API to ensure compatibility with legacy automation scripts
 	_task(g.Group("/task"))
 
+	handles.SetupPlannedTaskRoute(g.Group("/planned_task"))
+
 	ms := g.Group("/message")
 	ms.POST("/get", message.HttpInstance.GetHandle)
 	ms.POST("/send", message.HttpInstance.SendHandle)

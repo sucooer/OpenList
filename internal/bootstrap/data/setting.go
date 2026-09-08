@@ -252,6 +252,8 @@ func InitialSettings() []model.SettingItem {
 		{Key: conf.StreamMaxServerUploadSpeed, Value: "-1", Type: conf.TypeNumber, Group: model.TRAFFIC, Flag: model.PRIVATE},
 		{Key: conf.MultipartEnabled, Value: "true", Type: conf.TypeBool, Group: model.TRAFFIC, Flag: model.PUBLIC},
 		{Key: conf.MultipartChunkSize, Value: "10", Type: conf.TypeNumber, Group: model.TRAFFIC, Flag: model.PUBLIC, Help: `chunk size of multipart upload in MB (positive integer), keep it under your CDN's request body limit; each active session buffers up to 8 chunks on the server's disk`},
+		{Key: conf.PlannedTaskRecordRetention, Value: "50", Type: conf.TypeNumber, Group: model.TRAFFIC, Flag: model.PRIVATE, Help: `max number of execution history records kept per planned task, 0 = unlimited`},
+		{Key: conf.PlannedTaskRecordRetentionDays, Value: "30", Type: conf.TypeNumber, Group: model.TRAFFIC, Flag: model.PRIVATE, Help: `execution history records older than this many days are deleted on a daily cleanup, 0 = keep forever`},
 	}
 	additionalSettingItems := tool.Tools.Items()
 	// 固定顺序

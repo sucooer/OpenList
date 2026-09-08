@@ -166,6 +166,8 @@ const (
 	StreamMaxServerUploadSpeed            = "max_server_upload_speed"
 	MultipartEnabled                      = "multipart_enabled"
 	MultipartChunkSize                    = "multipart_chunk_size"
+	PlannedTaskRecordRetention            = "planned_task_record_retention"
+	PlannedTaskRecordRetentionDays        = "planned_task_record_retention_days"
 )
 
 const (
