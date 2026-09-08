@@ -38,7 +38,7 @@ jobs:
         run: bash build.sh dev web
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          FRONTEND_REPO: ${{ vars.FRONTEND_REPO || 'sucooer/OpenList-Frontend' }}
+          FRONTEND_REPO: ${{ vars.FRONTEND_REPO || secrets.FRONTEND_REPO || 'sucooer/OpenList-Frontend' }}
 
       - name: Cross-compile binaries (pure Go, no cgo)
         run: |
