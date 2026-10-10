@@ -199,4 +199,5 @@ const (
 	PathKey
 	SharingIDKey
 	SkipHookKey
+	DirectUploadContentTypeKey
 )
