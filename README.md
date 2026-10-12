@@ -20,6 +20,50 @@
 - [CODE OF CONDUCT](./CODE_OF_CONDUCT.md)
 - [LICENSE](./LICENSE)
 
+## 一键安装（交互式管理脚本）
+
+本仓库提供安装/管理脚本 [installer/openlist.sh](./installer/openlist.sh)，安装本仓库构建的版本（GitHub Releases + Docker 镜像 `anyear/openlist`）。
+
+### 安装管理脚本
+
+Linux / macOS / WSL：
+
+```bash
+sudo curl -fsSL "https://raw.githubusercontent.com/sucooer/OpenList/refs/heads/main/installer/openlist.sh" -o /usr/local/bin/openlist
+sudo chmod +x /usr/local/bin/openlist
+openlist
+```
+
+Android Termux（`/usr/local/bin` 换成 `$PREFIX/bin`）：
+
+```bash
+curl -fsSL "https://raw.githubusercontent.com/sucooer/OpenList/refs/heads/main/installer/openlist.sh" -o $PREFIX/bin/openlist
+chmod +x $PREFIX/bin/openlist
+openlist
+```
+
+运行 `openlist` 唤出交互式菜单。
+
+### 安装（二进制模式，推荐）
+
+1. 菜单选 `1`（安装 OpenList）；
+2. 选版本：菜单默认的 `beta` 可用；正式版发布后选 `1` 自动跟踪 `releases/latest`，或选 `3` 手动输入版本标签（如 `beta`）；
+3. 确认后脚本会下载 `openlist-linux-<架构>.tar.gz`、创建 systemd 服务并启动。
+
+初始管理员密码在菜单 `9`（查看日志）里，服务首次启动时会打印。服务默认监听 `5244` 端口。
+
+### 安装（Docker 模式）
+
+1. 菜单选 `11`（Docker 一键安装/启动）；
+2. 选择镜像标签：`beta` / `beta-ffmpeg` / `beta-aio` / `beta-aria2`，或手动输入（正式版发布后可输入 `latest` 等）；
+3. 脚本会拉取 `anyear/openlist:<标签>` 并创建容器（端口 `5244`）。
+
+### 其他菜单功能
+
+- `2` 更新 / `3` 卸载（二进制），`12`-`16` 容器进入、改密码、重启、状态、日志
+- `4` 从 Alist 迁移数据，`5`-`8` 服务启停/状态/日志，`10` 管理员密码管理
+- `17` Nginx 域名绑定/反代，`18` 及以后：定时自动更新（二进制与 Docker）
+
 ## Disclaimer
 
 OpenList is an open-source project independently maintained by the OpenList Team, following the AGPL-3.0 license and committed to maintaining complete code openness and modification transparency.
