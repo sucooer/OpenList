@@ -29,7 +29,7 @@
 Linux / macOS / WSL：
 
 ```bash
-sudo curl -fsSL "https://raw.githubusercontent.com/sucooer/OpenList/refs/heads/main/installer/openlist.sh" -o /usr/local/bin/openlist
+sudo curl -fsSL "https://raw.githubusercontent.com/sucooer/OpenList/refs/heads/selfuse/installer/openlist.sh" -o /usr/local/bin/openlist
 sudo chmod +x /usr/local/bin/openlist
 openlist
 ```
@@ -37,7 +37,7 @@ openlist
 Android Termux（`/usr/local/bin` 换成 `$PREFIX/bin`）：
 
 ```bash
-curl -fsSL "https://raw.githubusercontent.com/sucooer/OpenList/refs/heads/main/installer/openlist.sh" -o $PREFIX/bin/openlist
+curl -fsSL "https://raw.githubusercontent.com/sucooer/OpenList/refs/heads/selfuse/installer/openlist.sh" -o $PREFIX/bin/openlist
 chmod +x $PREFIX/bin/openlist
 openlist
 ```

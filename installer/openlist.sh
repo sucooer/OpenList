@@ -20,7 +20,7 @@ log_debug() {
 #   - curl, tar
 #
 # Installation:
-#   sudo curl -fsSL "https://raw.githubusercontent.com/sucooer/OpenList/refs/heads/main/installer/openlist.sh" -o /usr/local/bin/openlist && sudo chmod +x /usr/local/bin/openlist && openlist
+#   sudo curl -fsSL "https://raw.githubusercontent.com/sucooer/OpenList/refs/heads/selfuse/installer/openlist.sh" -o /usr/local/bin/openlist && sudo chmod +x /usr/local/bin/openlist && openlist
 #
 # Usage:
 #   openlist
@@ -2258,11 +2258,11 @@ setup_cron_update() {
     local cmd
     if [ "$mode" = "bin" ]; then
         # 修改为非交互式更新命令
-        cmd="curl -fsSL \"https://raw.githubusercontent.com/sucooer/OpenList/refs/heads/main/installer/openlist.sh\" | sudo bash -s -- non_interactive_update bin"
+        cmd="curl -fsSL \"https://raw.githubusercontent.com/sucooer/OpenList/refs/heads/selfuse/installer/openlist.sh\" | sudo bash -s -- non_interactive_update bin"
         mark="$CRON_MARK_BIN"
     else
         # 修改为非交互式 Docker 更新命令
-        cmd="curl -fsSL \"https://raw.githubusercontent.com/sucooer/OpenList/refs/heads/main/installer/openlist.sh\" | sudo bash -s -- non_interactive_update docker"
+        cmd="curl -fsSL \"https://raw.githubusercontent.com/sucooer/OpenList/refs/heads/selfuse/installer/openlist.sh\" | sudo bash -s -- non_interactive_update docker"
         mark="$CRON_MARK_DOCKER"
     fi
     (crontab -l 2>/dev/null | grep -v "$mark"; echo "$schedule $cmd $mark") | crontab -
