@@ -44,6 +44,23 @@ openlist
 
 运行 `openlist` 唤出交互式菜单。
 
+### 国内源（下载加速）
+
+`raw.githubusercontent.com` 在部分地区无法访问（连接被重置）。可改用以下国内可达源，按顺序依次尝试、校验内容后安装：
+
+```bash
+for u in \
+  "https://fastly.jsdelivr.net/gh/sucooer/OpenList@selfuse/installer/openlist.sh" \
+  "https://ghfast.top/https://raw.githubusercontent.com/sucooer/OpenList/refs/heads/selfuse/installer/openlist.sh" \
+  "https://gh.llkk.cc/https://raw.githubusercontent.com/sucooer/OpenList/refs/heads/selfuse/installer/openlist.sh"; do
+  curl -fsSL "$u" -o /tmp/openlist.sh && grep -q MANAGER_VERSION /tmp/openlist.sh && break
+done
+sudo cp /tmp/openlist.sh /usr/local/bin/openlist && sudo chmod +x /usr/local/bin/openlist
+openlist
+```
+
+Termux 将 `/usr/local/bin/openlist` 换成 `$PREFIX/bin/openlist`（无需 sudo）。安装后横幅显示的版本号应与 [installer/openlist.sh](./installer/openlist.sh) 中的 `MANAGER_VERSION` 一致。更新二进制时，也可在脚本的网络设置中选择加速代理（`ghfast.top` / `gh.llkk.cc` / `gh-proxy.com`）。
+
 ### 安装（二进制模式，推荐）
 
 1. 菜单选 `1`（安装 OpenList）；
