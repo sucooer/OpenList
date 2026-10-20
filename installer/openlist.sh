@@ -744,12 +744,13 @@ setup_proxy() {
     echo -e "${YELLOW_COLOR}代理可以加速下载，推荐国内用户使用${RES}"
     echo
     echo -e "${GREEN_COLOR}1${RES} - 不使用代理（默认）"
-    echo -e "${GREEN_COLOR}2${RES} - 使用 ghproxy.com"
-    echo -e "${GREEN_COLOR}3${RES} - 使用 mirror.ghproxy.com"
-    echo -e "${GREEN_COLOR}4${RES} - 自定义代理地址"
+    echo -e "${GREEN_COLOR}2${RES} - 使用 ghfast.top"
+    echo -e "${GREEN_COLOR}3${RES} - 使用 gh.llkk.cc"
+    echo -e "${GREEN_COLOR}4${RES} - 使用 gh-proxy.com"
+    echo -e "${GREEN_COLOR}5${RES} - 自定义代理地址"
     echo
     while true; do
-        proxy_choice=$(default_read "请输入选项 [1-4] (默认1): " "1")
+        proxy_choice=$(default_read "请输入选项 [1-5] (默认1): " "1")
         case "$proxy_choice" in
             1)
                 GH_PROXY=""
@@ -757,16 +758,21 @@ setup_proxy() {
                 break
                 ;;
             2)
-                GH_PROXY="https://ghproxy.com/"
-                echo -e "${GREEN_COLOR}已选择：ghproxy.com${RES}"
+                GH_PROXY="https://ghfast.top/"
+                echo -e "${GREEN_COLOR}已选择：ghfast.top${RES}"
                 break
                 ;;
             3)
-                GH_PROXY="https://mirror.ghproxy.com/"
-                echo -e "${GREEN_COLOR}已选择：mirror.ghproxy.com${RES}"
+                GH_PROXY="https://gh.llkk.cc/"
+                echo -e "${GREEN_COLOR}已选择：gh.llkk.cc${RES}"
                 break
                 ;;
             4)
+                GH_PROXY="https://gh-proxy.com/"
+                echo -e "${GREEN_COLOR}已选择：gh-proxy.com${RES}"
+                break
+                ;;
+            5)
                 echo -e "${YELLOW_COLOR}代理地址格式：https://example.com/${RES}"
                 custom_proxy=$(default_read "请输入代理地址 (以/结尾): " "")
                 if [[ "$custom_proxy" =~ ^https://.*/$ ]]; then
