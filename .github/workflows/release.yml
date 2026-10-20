@@ -11,6 +11,7 @@ on:
 
 permissions:
   contents: write
+  actions: write
 
 jobs:
   release:
@@ -67,3 +68,9 @@ jobs:
           for file in build/compress/*; do
             gh release upload "${{ github.event.release.tag_name }}" "$file" --clobber
           done
+
+      - name: Trigger beta rebuild to keep beta release on top
+        # Rebuilding beta refreshes its published_at so it stays first in the releases list
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh workflow run beta_release.yml --ref selfuse
