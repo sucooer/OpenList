@@ -34,3 +34,6 @@ output/
 
 .VSCodeCounter
 *.syso
+# Local runtime data & tooling
+/_tmp_data/
+/.workbuddy/
