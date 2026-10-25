@@ -1,28 +1,53 @@
 name: Release builds
 
 # Fork 自用精简版（正式版）：
-# - 触发：GitHub Release published（打 v* tag 后由 changelog.yml 自动建 Release，或手动创建）
+# - 触发：
+#   1) release published —— 手动在网页发布 Release 时
+#   2) workflow_dispatch —— 由 changelog.yml 建好 Release 后主动 dispatch，
+#      也可在 Actions 页面手填 tag 补跑
+#      （GITHUB_TOKEN 创建的 Release 不会触发 release 事件，必须显式串联）
 # - 只产出 Windows amd64 / Linux amd64 / Linux arm64 三个纯 Go 交叉编译产物并上传该 Release
 # - 前端用 FRONTEND_REPO 的 edge(rolling) 产物（fork 无稳定前端 release 时 releases/latest 会 404）
 
 on:
   release:
     types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to build (e.g. v4.2.8.1)'
+        required: true
+        type: string
 
 permissions:
   contents: write
   actions: write
 
+concurrency:
+  group: release-${{ github.event.release.tag_name || github.event.inputs.tag }}
+  cancel-in-progress: false
+
 jobs:
   release:
     name: Release (win-amd64 / linux-amd64 / linux-arm64)
     runs-on: ubuntu-latest
+    env:
+      TAG: ${{ github.event.release.tag_name || github.event.inputs.tag }}
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
+          ref: ${{ env.TAG }}
           fetch-depth: 0
           fetch-tags: true
+
+      - name: Check tag
+        run: |
+          if [ -z "$TAG" ]; then
+            echo "::error::tag is empty (release event and workflow_dispatch input both missing)"
+            exit 1
+          fi
+          echo "building $TAG at $(git rev-parse --short HEAD)"
 
       - name: Setup Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
@@ -42,7 +67,7 @@ jobs:
           mkdir -p build
           gitCommit=$(git rev-parse --short HEAD)
           builtAt=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-          ldflags="-w -s -X 'github.com/OpenListTeam/OpenList/v4/internal/conf.BuiltAt=${builtAt}' -X 'github.com/OpenListTeam/OpenList/v4/internal/conf.GitAuthor=OpenList Fork Builder <noreply@github.com>' -X 'github.com/OpenListTeam/OpenList/v4/internal/conf.GitCommit=${gitCommit}' -X 'github.com/OpenListTeam/OpenList/v4/internal/conf.Version=${{ github.event.release.tag_name }}' -X 'github.com/OpenListTeam/OpenList/v4/internal/conf.WebVersion=rolling'"
+          ldflags="-w -s -X 'github.com/OpenListTeam/OpenList/v4/internal/conf.BuiltAt=${builtAt}' -X 'github.com/OpenListTeam/OpenList/v4/internal/conf.GitAuthor=OpenList Fork Builder <noreply@github.com>' -X 'github.com/OpenListTeam/OpenList/v4/internal/conf.GitCommit=${gitCommit}' -X 'github.com/OpenListTeam/OpenList/v4/internal/conf.Version=${TAG}' -X 'github.com/OpenListTeam/OpenList/v4/internal/conf.WebVersion=rolling'"
           for t in "linux amd64" "linux arm64" "windows amd64"; do
             os=${t%% *}
             arch=${t##* }
@@ -65,8 +90,16 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          # tag 事件下 changelog 会并行创建 Release，这里最多等 5 分钟
+          for i in $(seq 1 30); do
+            if gh release view "$TAG" >/dev/null 2>&1; then
+              break
+            fi
+            echo "release $TAG not ready ($i/30), waiting 10s"
+            sleep 10
+          done
           for file in build/compress/*; do
-            gh release upload "${{ github.event.release.tag_name }}" "$file" --clobber
+            gh release upload "$TAG" "$file" --clobber
           done
 
       - name: Trigger beta rebuild to keep beta release on top

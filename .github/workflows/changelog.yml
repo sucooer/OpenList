@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: write
+  actions: write
 
 jobs:
   changelog:
@@ -25,3 +26,11 @@ jobs:
       - run: npx changelogithub # or changelogithub@0.12 if ensure the stable result
         env:
           GITHUB_TOKEN: ${{secrets.GITHUB_TOKEN}}
+
+      - name: Trigger release build
+        # 用 GITHUB_TOKEN 创建的 Release 不会触发 release: published 事件
+        # （GitHub 为避免递归触发会抑制该类事件），必须显式 dispatch。
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: gh workflow run release.yml --ref selfuse -f tag="$TAG"
