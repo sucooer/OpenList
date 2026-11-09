@@ -275,4 +275,5 @@ const (
 	DirectUploadContentTypeKey
 	SkipNoOverwriteKey
 	ThumbnailBaseURLKey
+	RemovePermanentlyKey
 )
