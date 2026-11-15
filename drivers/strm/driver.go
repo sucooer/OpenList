@@ -6,6 +6,8 @@ import (
 	"fmt"
 	stdpath "path"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/OpenListTeam/OpenList/v4/internal/driver"
 	"github.com/OpenListTeam/OpenList/v4/internal/errs"
@@ -28,6 +30,12 @@ type Strm struct {
 	supportSuffix  map[string]struct{}
 	downloadSuffix map[string]struct{}
 	minSizeBytes   int64
+
+	// syncMu guards incompleteMarks and missingSince, the state behind
+	// the sync-mode deletion guards in sync_guard.go.
+	syncMu          sync.Mutex
+	incompleteMarks map[string]time.Time
+	missingSince    map[string]time.Time
 }
 
 func (d *Strm) Config() driver.Config {
@@ -129,6 +137,10 @@ func (d *Strm) Drop(ctx context.Context) error {
 	d.pathMap = nil
 	d.downloadSuffix = nil
 	d.supportSuffix = nil
+	d.syncMu.Lock()
+	d.incompleteMarks = nil
+	d.missingSince = nil
+	d.syncMu.Unlock()
 	for path := range strings.SplitSeq(d.Paths, "\n") {
 		RemoveStrm(utils.FixAndCleanPath(strings.TrimSpace(path)), d)
 	}
@@ -190,6 +202,12 @@ func (d *Strm) List(ctx context.Context, dir model.Obj, args model.ListArgs) ([]
 		tmp, err := d.list(ctx, dst, sub, fsArgs)
 		if err == nil {
 			objs = append(objs, tmp...)
+		} else {
+			// A failed source must not silently shrink the merged
+			// listing: mark this root incomplete so sync-mode
+			// deletion is suspended until the source recovers.
+			d.markIncomplete(root)
+			log.Warnf("strm list: source %s failed, merged listing may be incomplete: %v", dst, err)
 		}
 	}
 	return objs, nil

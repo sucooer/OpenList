@@ -24,7 +24,7 @@ var strmTrie = patricia.NewTrie()
 
 func UpdateLocalStrm(ctx context.Context, path string, objs []model.Obj) {
 	path = utils.FixAndCleanPath(path)
-	updateLocal := func(driver *Strm, basePath string, objs []model.Obj) {
+	updateLocal := func(driver *Strm, basePath string, rootKey string, objs []model.Obj) {
 		relParent := strings.TrimPrefix(basePath, utils.GetActualMountPath(driver.MountPath))
 		localParentPath := stdpath.Join(driver.SaveStrmLocalPath, relParent)
 		if err := createLocalDirectory(localParentPath); err != nil {
@@ -35,7 +35,7 @@ func UpdateLocalStrm(ctx context.Context, path string, objs []model.Obj) {
 			localPath := stdpath.Join(localParentPath, obj.GetName())
 			generateStrm(ctx, driver, obj, localPath)
 		}
-		deleteExtraFiles(driver, localParentPath, objs)
+		deleteExtraFiles(driver, localParentPath, objs, rootKey)
 	}
 
 	_ = strmTrie.VisitPrefixes(patricia.Prefix(path), func(needPathPrefix patricia.Prefix, item patricia.Item) error {
@@ -47,7 +47,7 @@ func UpdateLocalStrm(ctx context.Context, path string, objs []model.Obj) {
 		}
 		for _, strmDriver := range strmDrivers {
 			strmObjs := strmDriver.convert2strmObjs(ctx, path, objs)
-			updateLocal(strmDriver, stdpath.Join(stdpath.Base(needPath), restPath), strmObjs)
+			updateLocal(strmDriver, stdpath.Join(stdpath.Base(needPath), restPath), strmDriver.rootKeyForSource(needPath), strmObjs)
 		}
 		return nil
 	})
@@ -189,65 +189,109 @@ func isSameContent(localPath string, size int64, rc io.Reader) (bool, error) {
 	return bytes.Equal(h1.Sum(nil), h2.Sum(nil)), nil
 }
 
-func deleteExtraFiles(driver *Strm, localPath string, objs []model.Obj) {
+// deleteExtraFiles mirrors cloud deletions into the local strm tree, but
+// only in sync mode and only behind the guards in sync_guard.go: it never
+// deletes on an empty or recently-incomplete listing, it requires a path
+// to be missing from two listings, it caps each batch, it only touches
+// files the driver manages, and it quarantines instead of deleting.
+func deleteExtraFiles(driver *Strm, localPath string, objs []model.Obj, rootKey string) {
 	if driver.SaveLocalMode != SaveLocalSyncMode {
 		return
 	}
-	localFiles, localDirs, err := getLocalDirsAndFiles(localPath)
+	entries, err := os.ReadDir(localPath)
 	if err != nil {
 		log.Errorf("Failed to read local files from %s: %v", localPath, err)
 		return
 	}
-
-	fileSet := make(map[string]struct{})
-	dirSet := make(map[string]struct{})
+	// An empty listing must never wipe a non-empty directory: a driver
+	// returning no entries with no error is a failure, not a deletion.
+	if len(objs) == 0 && len(entries) > 0 {
+		log.Warnf("strm sync: refusing deletion in %s: empty listing for a non-empty directory", localPath)
+		return
+	}
+	if driver.hasRecentIncomplete(rootKey) {
+		log.Warnf("strm sync: skipping deletion in %s: an incomplete listing was observed recently", localPath)
+		return
+	}
+	presentFiles := make(map[string]struct{}, len(objs))
+	presentDirs := make(map[string]struct{}, len(objs))
 	for _, obj := range objs {
-		objPath := stdpath.Join(localPath, obj.GetName())
+		objPath := filepath.Join(localPath, obj.GetName())
+		driver.clearMissing(objPath)
 		if obj.IsDir() {
-			dirSet[objPath] = struct{}{}
+			presentDirs[objPath] = struct{}{}
 		} else {
-			fileSet[objPath] = struct{}{}
+			presentFiles[objPath] = struct{}{}
 		}
 	}
-
-	for _, localFile := range localFiles {
-		if _, exists := fileSet[localFile]; !exists {
-			err := os.Remove(localFile)
-			if err != nil {
-				log.Errorf("Failed to delete file: %s, error: %v\n", localFile, err)
-			} else {
-				log.Infof("Deleted file %s", localFile)
-			}
-		}
-	}
-
-	for _, localDir := range localDirs {
-		if _, exists := dirSet[localDir]; !exists {
-			err := os.RemoveAll(localDir)
-			if err != nil {
-				log.Errorf("Failed to delete directory: %s, error: %v\n", localDir, err)
-			} else {
-				log.Infof("Deleted directory %s", localDir)
-			}
-		}
-	}
-}
-
-func getLocalDirsAndFiles(localPath string) ([]string, []string, error) {
-	var files, dirs []string
-	entries, err := os.ReadDir(localPath)
-	if err != nil {
-		return nil, nil, err
-	}
+	var missingStrm, missingDirs []string
 	for _, entry := range entries {
-		fullPath := stdpath.Join(localPath, entry.Name())
+		name := entry.Name()
+		if name == trashDirName {
+			continue
+		}
+		fullPath := filepath.Join(localPath, name)
 		if entry.IsDir() {
-			dirs = append(dirs, fullPath)
-		} else {
-			files = append(files, fullPath)
+			if _, ok := presentDirs[fullPath]; !ok {
+				missingDirs = append(missingDirs, fullPath)
+			}
+			continue
+		}
+		if _, ok := presentFiles[fullPath]; ok {
+			continue
+		}
+		if isStrmFileName(name) {
+			missingStrm = append(missingStrm, fullPath)
 		}
 	}
-	return files, dirs, nil
+	var eligibleStrm, eligibleDirs []string
+	for _, p := range missingStrm {
+		if driver.noteMissing(p) {
+			eligibleStrm = append(eligibleStrm, p)
+		}
+	}
+	for _, p := range missingDirs {
+		if driver.noteMissing(p) {
+			eligibleDirs = append(eligibleDirs, p)
+		}
+	}
+	decisions := len(eligibleStrm) + len(eligibleDirs)
+	if decisions == 0 {
+		return
+	}
+	if deletionOverCap(decisions, len(entries)) {
+		log.Warnf("strm sync: refusing deletion in %s: %d candidates exceed the safety cap; remove them manually if the cloud deletion was intended", localPath, decisions)
+		return
+	}
+	stems := make(map[string]struct{}, len(eligibleStrm))
+	for _, p := range eligibleStrm {
+		if stem, ok := strmStem(filepath.Base(p)); ok {
+			stems[stem] = struct{}{}
+		}
+	}
+	// Sidecar files ride along with their .strm file only.
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		name := entry.Name()
+		fullPath := filepath.Join(localPath, name)
+		if _, ok := presentFiles[fullPath]; ok {
+			continue
+		}
+		if isStrmFileName(name) {
+			continue
+		}
+		if isManagedSibling(name, stems) {
+			driver.quarantineFile(fullPath)
+		}
+	}
+	for _, p := range eligibleStrm {
+		driver.quarantineFile(p)
+	}
+	for _, p := range eligibleDirs {
+		driver.quarantineStaleDir(p)
+	}
 }
 
 func init() {
